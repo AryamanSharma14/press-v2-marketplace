@@ -83,7 +83,7 @@ Note: submodules are checked out in detached HEAD state. Do not use `git pull` o
 
 Open a PR that deletes `apps/<publisher>-<appname>/`. Include a reason in the PR description. Only the original publisher or the Frappe team can remove an app.
 
-When merged, Press sets the listing to `Unlisted` (not deleted) to preserve subscription and billing history.
+When merged, Press sets the listing to `Disabled` (not deleted) to preserve subscription and billing history.
 
 ## Review Criteria
 

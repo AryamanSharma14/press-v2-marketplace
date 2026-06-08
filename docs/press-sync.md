@@ -51,7 +51,7 @@ Manual sync is available from the Press admin panel via a "Sync Marketplace Regi
 
 ### Conflict resolution
 
-If `app.toml` is valid and passes schema check, the Press record is overwritten unconditionally. If an `apps/<id>/` directory is removed from the registry (merged removal PR), the corresponding `Marketplace App` is set to `status = Unlisted`. It is not deleted — subscription and billing history must be preserved.
+If `app.toml` is valid and passes schema check, the Press record is overwritten unconditionally. If an `apps/<id>/` directory is removed from the registry (merged removal PR), the corresponding `Marketplace App` is set to `status = Disabled`. It is not deleted — subscription and billing history must be preserved.
 
 ## Telemetry Emission
 
