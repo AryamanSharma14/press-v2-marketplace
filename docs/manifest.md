@@ -43,12 +43,6 @@ category = "HR & Payroll"
 tags = ["payroll", "attendance", "leaves", "performance"]
 
 
-# ── Compatibility ─────────────────────────────────────────────────────────────
-
-# Supported Frappe Framework major versions. At least one required.
-frappe_versions = ["14", "15"]
-
-
 # ── Pricing ───────────────────────────────────────────────────────────────────
 
 # Free | Paid | Freemium
@@ -69,17 +63,64 @@ issues_url = "https://github.com/frappe/hrms/issues"
 # ── Media ─────────────────────────────────────────────────────────────────────
 
 [app.media]
-# Path to icon relative to src/ submodule root. PNG or SVG. Min 256×256px.
+# Path to icon relative to the app repo root. PNG or SVG. Min 256×256px.
 icon = "hrms/public/images/hrms-logo.svg"
 
-# Screenshot paths relative to src/ submodule root. PNG only. Max 8.
+# Screenshot paths relative to the app repo root. PNG only. Max 8.
 screenshots = [
   "hrms/public/images/screenshots/dashboard.png",
   "hrms/public/images/screenshots/payroll.png",
 ]
+
+
+# ── Versions ──────────────────────────────────────────────────────────────────
+#
+# Each entry answers: "if a site is running Frappe X, which branch do I clone
+# and what other apps does this need?"
+#
+# frappe   — semver range for the Frappe Framework version
+# branch   — branch to clone from source_url for this range
+# requires — other marketplace apps required at this version (optional)
+
+[[app.versions]]
+frappe = ">=14.0.0,<15.0.0"
+branch = "version-14"
+
+[[app.versions]]
+frappe = ">=15.0.0,<16.0.0"
+branch = "version-15"
+requires = ["erpnext>=15.0.0,<16.0.0"]
+
+[[app.versions]]
+frappe = ">=16.0.0-dev"
+branch = "develop"
+requires = ["erpnext>=16.0.0-dev"]
+```
+
+## Versioning
+
+Each app doesn't have a single version — it has a version per Frappe Framework version. ERPNext v15 lives on a different branch from ERPNext v14, and HRMS on v15 only works with ERPNext on v15, not v14. On top of that, some repos like payments have no tags at all, so you can't rely on semver releases.
+
+Each `[[app.versions]]` entry maps a framework semver range to a branch and optional dependencies. At install time Press checks what Frappe version the site is running, finds the matching entry, clones that branch from `source_url`, then does the same recursively for any declared dependencies.
+
+**Well-maintained repo** (version branches, proper tags):
+```toml
+[[app.versions]]
+frappe = ">=15.0.0,<16.0.0"
+branch = "version-15"
+requires = ["erpnext>=15.0.0,<16.0.0"]
+```
+
+**Poorly-maintained repo** (no version branches, no tags):
+```toml
+[[app.versions]]
+frappe = ">=15.0.0"
+branch = "main"
 ```
 
 ## Field Reference
+
+### Top-level fields
 
 | Field | Type | Required | Constraints |
 |-------|------|----------|-------------|
@@ -93,14 +134,23 @@ screenshots = [
 | `app.website` | string | — | HTTPS URL |
 | `app.category` | string | ✓ | Must be one of defined categories |
 | `app.tags` | string[] | — | Max 10 items |
-| `app.frappe_versions` | string[] | ✓ | Non-empty, values like `"14"`, `"15"` |
 | `app.subscription_type` | enum | ✓ | `Free`, `Paid`, or `Freemium` |
 | `app.pricing_url` | string | Paid/Freemium | HTTPS URL |
 | `app.contact.email` | string | ✓ | Valid email |
 | `app.contact.docs_url` | string | — | HTTPS URL |
 | `app.contact.issues_url` | string | — | HTTPS URL |
-| `app.media.icon` | string | ✓ | Relative path in `src/` |
-| `app.media.screenshots` | string[] | — | Max 8, relative paths in `src/` |
+| `app.media.icon` | string | ✓ | Relative path in app repo |
+| `app.media.screenshots` | string[] | — | Max 8, relative paths in app repo |
+
+### `[[app.versions]]` fields
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| `frappe` | string | ✓ | PEP 440 semver range, e.g. `>=15.0.0,<16.0.0` |
+| `branch` | string | ✓ | Branch name in `source_url` repo |
+| `requires` | string[] | — | App IDs with semver constraints, e.g. `erpnext>=15.0.0,<16.0.0` |
+
+At least one `[[app.versions]]` entry is required.
 
 ## Categories
 
@@ -135,7 +185,6 @@ publisher_name = "My Company Ltd"
 license = "MIT"
 source_url = "https://github.com/mycompany/my-app"
 category = "Inventory & Supply Chain"
-frappe_versions = ["15"]
 subscription_type = "Free"
 
 [app.contact]
@@ -143,4 +192,8 @@ email = "hello@mycompany.com"
 
 [app.media]
 icon = "my_app/public/images/icon.png"
+
+[[app.versions]]
+frappe = ">=15.0.0,<16.0.0"
+branch = "version-15"
 ```

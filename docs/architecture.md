@@ -1,32 +1,48 @@
 # Architecture
 
-## Registry Repository
+## Why This Over the Current Marketplace
 
-The marketplace registry lives at `https://github.com/frappe/marketplace`. It is fully public. Every change is a commit, every listing change is reviewable via `git log`, and every app version bump is traceable via `git blame`.
+The current marketplace stores app listings as Frappe doctypes in MariaDB. This works but has real limitations:
+
+| | Current (DB-driven) | New (git-native) |
+|--|---------------------|-----------------|
+| Change history | None | Full git log — who changed what, when, why |
+| Publishing | Web form on Frappe Cloud | GitHub PR |
+| Validation | Manual by Frappe team | Automated CI on every PR |
+| Versioning | Ad-hoc, per app | Standardized `[[app.versions]]` semver matrix |
+| Dependencies | Not declared | Explicit per-version `requires` |
+| Fix a typo | Only publisher can, via dashboard | Anyone can open a PR |
+| Install via CLI | Not possible | `bench marketplace install <id>` |
+
+The source URL already exists in the current system (`App Source.repository_url`). What changes is everything around it.
+
+## Repository
+
+Central registry: `https://github.com/frappe/marketplace`
+
+This is the source of truth for all Frappe marketplace app listings. It contains **metadata only** — no app code. Press clones directly from each app's `source_url` at the right branch when installing.
 
 ## Directory Structure
 
 ```
 frappe/marketplace/
-├── .gitmodules                      # all submodule declarations
 ├── apps/
 │   ├── frappe-erpnext/
-│   │   ├── app.toml                 # metadata (required)
-│   │   └── src/                     # submodule → frappe/erpnext@<commit>
+│   │   └── app.toml          # metadata only
 │   ├── frappe-hrms/
-│   │   ├── app.toml
-│   │   └── src/                     # submodule → frappe/hrms@<commit>
+│   │   └── app.toml
 │   └── acme-crm/
-│       ├── app.toml
-│       └── src/                     # submodule → acme/crm@<commit>
+│       └── app.toml
 ├── schema/
-│   └── app.schema.json              # JSON Schema — CI validates all app.toml against this
+│   └── app.schema.json       # JSON Schema — CI validates all app.toml against this
 ├── .github/
 │   ├── workflows/
-│   │   └── validate.yml             # runs on every PR
+│   │   └── validate.yml      # runs on every PR
 │   └── PULL_REQUEST_TEMPLATE.md
 └── docs/
 ```
+
+No submodules. Each `app.toml` is self-contained — it declares the source URL and which branch maps to which framework version.
 
 ## Naming Convention
 
@@ -42,17 +58,39 @@ The `publisher` field in `app.toml` must match the directory's `<publisher>` pre
 - `frappe-hrms` — Frappe HR
 - `acme-crm` — CRM app by Acme Corp
 
-## Submodule Convention
+## Versioning Model
 
-Each app's source is pinned at `apps/<id>/src/` as a git submodule pointing to a **specific commit**, not a branch. This means:
+Each app declares a `[[app.versions]]` table — one entry per supported Frappe Framework version range. Each entry specifies:
 
-- The registry records the exact code version that is listed at any point in time
-- Updating a listing to a newer release requires a new PR that bumps the submodule commit
-- `git log apps/frappe-hrms/src` shows the full version history of that listing
+- `frappe` — a semver range for the framework (e.g. `>=15.0.0,<16.0.0`)
+- `branch` — which branch of the source repo to install for this range
+- `requires` — optional list of other apps required at this version (with their own semver constraints)
 
-## Versioning
+**Well-maintained repo** (has version branches and tags):
+```toml
+[[app.versions]]
+frappe = ">=14.0.0,<15.0.0"
+branch = "version-14"
 
-There are no separate version directories. Each entry represents the **current published version**. Historical versions are accessible via `git log` on the registry. This is the same model used by `nixpkgs` and `homebrew-core`.
+[[app.versions]]
+frappe = ">=15.0.0,<16.0.0"
+branch = "version-15"
+requires = ["erpnext>=15.0.0,<16.0.0"]
+
+[[app.versions]]
+frappe = ">=16.0.0-dev"
+branch = "develop"
+requires = ["erpnext>=16.0.0-dev"]
+```
+
+**Poorly maintained repo** (no version branches, just main):
+```toml
+[[app.versions]]
+frappe = ">=15.0.0"
+branch = "main"
+```
+
+This handles both extremes. When Press installs an app, it looks up which version entry matches the site's current Frappe version and clones the declared branch.
 
 ## CI Validation
 
@@ -60,9 +98,10 @@ Every PR triggers `.github/workflows/validate.yml`. The workflow:
 
 1. Detects which `app.toml` files changed in the PR
 2. Validates each against `schema/app.schema.json`
-3. Checks the submodule URL is publicly accessible
+3. Checks `source_url` is publicly accessible
 4. Verifies `publisher` in `app.toml` matches the directory prefix
-5. Checks description length and required fields
+5. Validates all semver ranges in `[[app.versions]]` are well-formed
+6. Checks declared `requires` reference valid app IDs in the registry
 
 CI must pass before Frappe team review begins.
 
@@ -92,13 +131,13 @@ Developer fork + PR
 
 ## Local Registry Cache (bench CLI)
 
-`bench` maintains a shallow local cache of the registry at `~/.bench/marketplace/`. This is used for `bench marketplace search` and `bench marketplace install` without requiring a GitHub API token.
+`bench` maintains a shallow local cache of the registry at `~/.bench/marketplace/`. Used for `bench marketplace search` and `bench marketplace install` without requiring a GitHub API token.
 
 ```
 ~/.bench/marketplace/
 ├── apps/
-│   └── */app.toml    ← metadata only, no submodules
-└── .last-sync        ← timestamp of last pull
+│   └── */app.toml
+└── .last-sync
 ```
 
-The cache is refreshed automatically when it is older than 1 hour, or on demand via `bench marketplace sync`.
+Cache refreshes automatically when older than 1 hour, or on demand via `bench marketplace sync`.

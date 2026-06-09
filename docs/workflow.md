@@ -10,7 +10,6 @@ Use `bench marketplace publish` to automate this entirely, or follow the manual 
 
 **Prerequisites:**
 - A public GitHub repository containing a valid Frappe app
-- At least one tagged release in your repository
 - A GitHub account
 
 **1. Fork and clone**
@@ -26,18 +25,14 @@ cd marketplace
 git checkout -b add-<publisher>-<appname>
 ```
 
-**3. Add the app directory and submodule**
+**3. Add the app directory and app.toml**
 
 ```bash
 mkdir apps/<publisher>-<appname>
-git submodule add https://github.com/<your-org>/<repo> apps/<publisher>-<appname>/src
+# create app.toml — see docs/manifest.md for the full schema and minimal example
 ```
 
-**4. Create app.toml**
-
-Create `apps/<publisher>-<appname>/app.toml` from scratch, filling in all required fields. See [docs/manifest.md](manifest.md) for the full schema and a minimal valid example to copy from.
-
-**5. Commit and push**
+**4. Commit and push**
 
 ```bash
 git add apps/<publisher>-<appname>/
@@ -45,7 +40,7 @@ git commit -m "feat(apps): add <publisher>-<appname>"
 git push origin add-<publisher>-<appname>
 ```
 
-**6. Open PR against `frappe/marketplace:main`**
+**5. Open PR against `frappe/marketplace:main`**
 
 CI runs automatically. Fix any failures and push to the same branch. Frappe team reviews once CI passes.
 
@@ -62,22 +57,19 @@ git push origin update-<publisher>-<appname>
 # open PR
 ```
 
-## Bumping the App Version
+## Adding or Updating a Version Entry
 
-To update the listed version to a newer commit in the source repo:
+To add support for a new Frappe version, or update the branch for an existing one:
 
 ```bash
 git checkout -b bump-<publisher>-<appname>
-# fetch latest from origin and check out the desired tag or commit
-git -C apps/<publisher>-<appname>/src fetch origin
-git -C apps/<publisher>-<appname>/src checkout <tag-or-commit>
-git add apps/<publisher>-<appname>/src
-git commit -m "chore(apps): bump <publisher>-<appname> to $(git -C apps/<publisher>-<appname>/src rev-parse --short HEAD)"
+# edit apps/<publisher>-<appname>/app.toml
+# add or update the relevant [[app.versions]] entry
+git add apps/<publisher>-<appname>/app.toml
+git commit -m "chore(apps): add v16 support for <publisher>-<appname>"
 git push origin bump-<publisher>-<appname>
 # open PR
 ```
-
-Note: submodules are checked out in detached HEAD state. Do not use `git pull` on the submodule directory — use `fetch` + `checkout` to a specific tag or commit.
 
 ## Removing an App
 
@@ -89,12 +81,13 @@ When merged, Press sets the listing to `Disabled` (not deleted) to preserve subs
 
 | Check | Description |
 |-------|-------------|
-| CI passing | Schema validates, submodule URL is accessible |
+| CI passing | Schema validates, `source_url` is accessible, semver ranges are well-formed |
 | App installs cleanly | Frappe team tests install on a bench |
 | Category appropriate | Category matches the app's actual function |
 | Description quality | Accurate, professional, no spam |
 | Publisher match | `publisher` in `app.toml` matches submitter's GitHub org |
 | License accurate | License field reflects the actual license |
+| Dependencies correct | `requires` entries reference valid app IDs in the registry |
 
 ## Review Timeline
 
@@ -108,8 +101,10 @@ Target: **5 business days** for first response. PRs with no response to feedback
 ## Checklist
 
 - [ ] app.toml has all required fields
-- [ ] Submodule points to a public repository
-- [ ] App installs on Frappe v14 or v15
+- [ ] source_url points to a public repository
+- [ ] At least one [[app.versions]] entry declared
+- [ ] Branch names in [[app.versions]] exist in the source repo
+- [ ] App installs on the declared Frappe version
 - [ ] At least one screenshot included
 - [ ] Contact email is actively monitored
 
@@ -117,7 +112,7 @@ Target: **5 business days** for first response. PRs with no response to feedback
 
 - [ ] New listing
 - [ ] Metadata update
-- [ ] Version bump
+- [ ] Version entry added or updated
 - [ ] Removal
 
 ## Notes for reviewers
@@ -130,5 +125,8 @@ Target: **5 business days** for first response. PRs with no response to feedback
 | `Missing required field: app.id` | Add `id` to `[app]` section |
 | `publisher does not match directory prefix` | `app.publisher` must match `<publisher>` in directory name |
 | `invalid category` | Use one of the categories listed in `docs/manifest.md` |
-| `submodule URL not accessible` | Ensure source repository is public |
+| `source_url not accessible` | Ensure source repository is public |
 | `description too short` | Description must be at least 50 characters |
+| `no [[app.versions]] entries` | At least one version entry is required |
+| `invalid semver range` | Use PEP 440 format, e.g. `>=15.0.0,<16.0.0` |
+| `branch not found in source repo` | Check branch name exists at `source_url` |
