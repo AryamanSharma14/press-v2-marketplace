@@ -131,10 +131,10 @@ Developer fork + PR
 
 ## Local Registry Cache (bench CLI)
 
-`bench` maintains a shallow local cache of the registry at `~/.bench/marketplace/`. Used for `bench marketplace search` and `bench marketplace install` without requiring a GitHub API token.
+`bench` maintains a shallow local cache of the registry at `~/.bench-cli/marketplace/`. Used for `bench marketplace search` and `bench marketplace install` without requiring a GitHub API token.
 
 ```
-~/.bench/marketplace/
+~/.bench-cli/marketplace/
 ├── apps/
 │   └── */app.toml
 └── .last-sync

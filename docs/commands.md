@@ -27,7 +27,7 @@ frappe-hrms         Frappe HR             frappe      Free    v14, v15
 acme-crm            Acme CRM              acme        Paid    v15
 ```
 
-Reads from the local cache at `~/.bench/marketplace/`. Auto-refreshes if cache is older than 1 hour.
+Reads from the local cache at `~/.bench-cli/marketplace/`. Auto-refreshes if cache is older than 1 hour.
 
 ---
 
@@ -100,7 +100,7 @@ Force a refresh of the local registry cache, regardless of cache age.
 bench marketplace sync
 ```
 
-Performs a shallow `git pull` on `~/.bench/marketplace/`.
+Performs a shallow `git pull` on `~/.bench-cli/marketplace/`.
 
 ---
 

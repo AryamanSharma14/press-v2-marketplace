@@ -15,11 +15,15 @@ The registry is authoritative. Press never writes back to it.
 
 A scheduled background job in Press syncs the registry every **15 minutes**:
 
-1. Shallow-clones or pulls `frappe/marketplace:main`
-2. Reads all `apps/*/app.toml` files
-3. For each `app.toml`, upserts the corresponding `Marketplace App` doctype record
-4. For each `[[app.versions]]` entry, upserts the corresponding `Marketplace App Version` record (Frappe version → App Source branch mapping)
-5. Sets changed records to pending re-validation before going live in the UI
+1. Acquires an exclusive file lock on `{clone_dir}/.sync.lock`. If the lock is held by another worker, this run exits immediately and retries on the next 15-minute tick — preventing two workers from pulling into the same directory simultaneously.
+2. Shallow-clones or pulls `frappe/marketplace:main` into `/home/frappe/marketplace-registry/` (created on first run)
+3. Reads all `apps/*/app.toml` files
+4. For each `app.toml`:
+   - If no `App` doctype record exists for `app.id`, creates one (`name = app.id`, `repo = source_url`) before upserting `Marketplace App`
+   - Upserts the `Marketplace App` doctype record
+   - Upserts each `[[app.versions]]` entry as a `Marketplace App Version` child record
+5. If an `apps/<id>/` directory is removed from the registry, sets `Marketplace App.status = Disabled` — does not delete; billing and subscription history is preserved
+6. Releases the file lock
 
 Manual sync is available from the Press admin panel via a "Sync Marketplace Registry" button.
 
