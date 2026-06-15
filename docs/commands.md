@@ -85,10 +85,10 @@ bench marketplace update --all
 - `--all` — update all installed marketplace apps
 
 **What it does:**
-1. Fetches the latest registry cache
-2. Reads the pinned submodule commit for `<id>`
-3. Runs `git fetch && git checkout <commit>` in the app directory (leaves HEAD detached at the pinned commit)
-4. Runs `bench pip install -e apps/<app>` to reinstall dependencies
+1. Fetches the latest registry cache (refreshes `~/.bench-cli/marketplace/`)
+2. Resolves the correct branch for `<id>` from the updated cache
+3. Runs `git pull origin <branch>` in the app directory to advance to the latest commit on that branch
+4. Runs `pip install -e apps/<app>` to reinstall dependencies
 
 ---
 
@@ -183,7 +183,7 @@ bench marketplace publish
 2. Checks if an entry for this app already exists in the registry (update vs new listing)
 3. Forks `frappe/marketplace` under the publisher's GitHub account (via GitHub API)
 4. Creates a branch `add-<publisher>-<appname>` or `bump-<publisher>-<appname>`
-5. Adds the app directory with `app.toml` and submodule, or bumps the submodule commit
+5. Adds `apps/<publisher>-<appname>/app.toml` to the branch (new listing) or updates the existing `app.toml` (metadata/version update)
 6. Commits and pushes
 7. Opens a PR against `frappe/marketplace:main`
 8. Prints the PR URL
@@ -194,9 +194,9 @@ bench marketplace publish
 **Output:**
 ```
 Validating app.toml... ok
-Forking frappe/marketplace... done
+Forking frappe/marketplace... done (polling until ready)
 Creating branch add-acme-crm... done
-Adding submodule https://github.com/acme/crm... done
+Writing apps/acme-crm/app.toml... done
 Pushing... done
 
 PR opened: https://github.com/frappe/marketplace/pull/142

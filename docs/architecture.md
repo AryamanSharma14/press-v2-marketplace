@@ -78,9 +78,9 @@ branch = "version-15"
 requires = ["erpnext>=15.0.0,<16.0.0"]
 
 [[app.versions]]
-frappe = ">=16.0.0-dev"
+frappe = ">=16.0.0.dev0"
 branch = "develop"
-requires = ["erpnext>=16.0.0-dev"]
+requires = ["erpnext>=16.0.0.dev0"]
 ```
 
 **Poorly maintained repo** (no version branches, just main):

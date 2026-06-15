@@ -141,9 +141,9 @@ branch = "version-15"
 requires = ["erpnext>=15.0.0,<16.0.0"]
 
 [[app.versions]]
-frappe = ">=16.0.0-dev"
+frappe = ">=16.0.0.dev0"
 branch = "develop"
-requires = ["erpnext>=16.0.0-dev"]
+requires = ["erpnext>=16.0.0.dev0"]
 ```
 
 At least one `[[app.versions]]` entry is required. For apps that do not maintain version branches:
@@ -195,19 +195,19 @@ CI must pass before Frappe team review begins.
 
 A scheduled background job in Press syncs the registry every **15 minutes**.
 
-**Concurrency:** Press runs multiple background workers. Only one sync may run at a time. The job acquires an exclusive file lock on `{clone_dir}/.sync.lock` before touching the working tree. If the lock is held, the incoming run exits immediately — it will be retried on the next 15-minute tick. This prevents two workers from pulling into the same directory simultaneously.
+**Concurrency:** Press runs multiple background workers across multiple machines. Only one sync may run at a time. The job acquires a distributed Redis lock via `frappe.cache().set("marketplace_sync_lock", 1, nx=True, ex=900)` before touching the working tree. If the lock is not acquired, the incoming run exits immediately — it will be retried on the next scheduled tick. A file-based lock is insufficient because workers run on separate servers.
 
 **Steps:**
 
-1. Acquire file lock on `{clone_dir}/.sync.lock`
-2. Shallow-clone or pull `frappe/marketplace:main` into a fixed directory on the Press server: `/home/frappe/marketplace-registry/` (created on first run)
-3. Read all `apps/*/app.toml` files
+1. Acquire Redis lock: `frappe.cache().set("marketplace_sync_lock", 1, nx=True, ex=900)`. Exit immediately if not acquired.
+2. Shallow-clone or pull `frappe/marketplace:main` into `/home/frappe/marketplace-registry/` on the Press server (created on first run).
+3. Read all `apps/*/app.toml` files.
 4. For each `app.toml`:
-   a. If no `App` doctype record exists for `app.id`, create one with `name = app.id` and `repo = source_url` before upserting `Marketplace App`
-   b. Upsert the `Marketplace App` doctype record
-   c. Upsert each `[[app.versions]]` entry as a `Marketplace App Version` child record
-5. If an `apps/<id>/` directory is removed from the registry (merged removal PR), set `Marketplace App.status = Disabled` — do **not** delete; billing and subscription history must be preserved
-6. Release file lock
+   a. If no `App` doctype record exists for `app.id`, create one (`name = app.id`, `title = app.title`) before upserting `Marketplace App`.
+   b. Load or create the `Marketplace App` doctype record; write all top-level fields.
+   c. Replace the `Marketplace App Registry Version` child table entirely — delete all existing rows, then recreate one row per `[[app.versions]]` entry with `frappe_range`, `branch`, and `requires` (JSON). Use `doc.save(ignore_permissions=True)` so Frappe writes parent and children atomically.
+5. For each `apps/<id>/` directory that was present in the previous sync but is now absent (removal PR merged): `frappe.db.set_value("Marketplace App", app_id, "status", "Disabled")`. Do **not** delete — billing and subscription history must be preserved.
+6. Release Redis lock: `frappe.cache().delete("marketplace_sync_lock")`.
 
 Manual sync available from Press admin panel via "Sync Marketplace Registry" button.
 
@@ -232,25 +232,31 @@ Manual sync available from Press admin panel via "Sync Marketplace Registry" but
 | `app.contact.issues_url` | `issues_url` | **new field** |
 | `app.media.icon` | `image` | existing |
 | `app.media.screenshots` | `screenshots` | existing |
-| `[[app.versions]]` entries | `Marketplace App Version` child table | existing (schema update needed) |
+| `[[app.versions]]` entries | `Marketplace App Registry Version` child table | **new child doctype** (fields: `frappe_range` Data, `branch` Data, `requires` JSON) |
 
 The current doctype tracks publisher via a `team` Link field. The new `publisher` and `publisher_name` flat fields are for the registry-native flow and coexist with the existing `team` field during migration.
 
 ### Version Resolution at Install Time
 
-When a Frappe Cloud site installs a marketplace app:
+**In Press (Frappe Cloud):**
 
-1. Get the site's current Frappe version (e.g. `15.18.2`)
-2. Find the `[[app.versions]]` entry where the `frappe` semver range matches that version
-3. Clone `source_url` at the declared `branch`
-4. Recursively resolve and install any `requires` dependencies using the same lookup
-5. If two installed apps declare conflicting `requires` constraints — surface this as an error at install time, do not silently install an incompatible version
+1. Get the site's current Frappe version (e.g. `15.18.2`).
+2. Query `Marketplace App Registry Version` for the app; evaluate each `frappe_range` using `packaging.specifiers.SpecifierSet`; take the matching entry's `branch`.
+3. Find or create an `AppSource` for `(source_url, branch)`. Proceed through the existing `ReleaseGroup → DeployCandidate → Deploy` flow — Press never does a raw git clone; the Agent process on the server does that, driven by the deploy flow.
+4. Recursively resolve any `requires` dependencies declared in the matched `[[app.versions]]` entry using the same lookup.
+5. If two installed apps declare conflicting `requires` constraints, surface this as an error at install time. Do not silently install an incompatible version.
+
+**In bench-cli:**
+
+1. `_get_bench_frappe_version(bench_root)` reads `apps/frappe/__version__.py`.
+2. Iterate `[[app.versions]]` in the cached `app.toml`; evaluate `frappe_range` using `packaging.specifiers.SpecifierSet`.
+3. Take the matching `branch`; pass to `TaskRunner.run("get-app", {name, repo, branch})`.
 
 ### Telemetry
 
 Press already integrates PostHog via `press/utils/telemetry.py`. Marketplace telemetry extends this with no new infrastructure.
 
-**Extend the `capture()` signature:**
+**Extend the `capture()` signature** to accept an optional `properties` keyword argument:
 
 ```python
 # Current:
@@ -258,12 +264,27 @@ def capture(event, app, distinct_id=None):
 
 # After:
 def capture(event, app, distinct_id=None, properties=None):
+    ...
+    ph and ph.capture(
+        distinct_id=distinct_id or frappe.local.site,
+        event=f"{app}_{event}",
+        properties=properties or {},
+    )
+```
+
+**Where to add the calls:** `press/press/doctype/site/site.py` at the points where app installs and uninstalls are confirmed (alongside the existing `marketplace_app_hook` calls — lines ~844, ~847). The `marketplace_app_hook` function itself runs publisher-defined scripts, not telemetry; do not put PostHog calls inside it.
+
+```python
+# example at the install confirmation point in site.py:
+if frappe.db.exists("Marketplace App", app):
+    capture("app_installed", "marketplace", distinct_id=self.name,
+            properties={"app": app, "frappe_version": frappe_version, ...})
 ```
 
 **Events emitted:**
 
-| Press event | PostHog event |
-|-------------|--------------|
+| Press event | PostHog event name |
+|-------------|-------------------|
 | App added to site, deploy succeeds | `marketplace_app_installed` |
 | App removed from site, deploy succeeds | `marketplace_app_uninstalled` |
 | App version hash changes on site | `marketplace_app_updated` |
@@ -431,7 +452,7 @@ erpnext    frappe-erpnext   9c4f2aa            9c4f2aa         up to date
 ```
 
 **`bench marketplace update <id>` / `--all`**
-Fetches latest cache. For each app, runs `git fetch && git checkout <latest-commit>` in `apps/<name>/`, then reinstalls Python dependencies.
+Fetches latest cache. For each app, runs `git pull origin <branch>` in `apps/<name>/` (branch resolved from updated registry cache), then reinstalls Python dependencies via `pip install -e`.
 
 **`bench marketplace sync`**
 Force pull of `~/.bench-cli/marketplace/` regardless of cache age.
